@@ -1,47 +1,76 @@
 import os
-import re
 from dotenv import load_dotenv
 from google import genai
-from google.genai import errors
+from google.genai import errors, types
 
-
+# Load environment variables
 load_dotenv()
+
 api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
-    raise ValueError("API key not found")
+    raise ValueError("API key not found. Check your .env file.")
 
+# Connect to Gemini
 client = genai.Client(api_key=api_key)
 
+# Conversation memory
 conversation_history = []
+
+# Chatbot personality
+system_instruction = """
+You are a friendly and patient Python and AI Engineering tutor.
+
+Your job is to help beginners learn programming and AI engineering.
+
+Follow these rules:
+
+1. Explain technical concepts using simple language.
+2. Break complicated topics into smaller steps.
+3. Provide practical Python code examples where appropriate.
+4. Explain code line by line when teaching new concepts.
+5. When a student makes a coding mistake, explain why it happened
+   and how to fix it.
+6. Give students small exercises to test their understanding.
+7. Do not assume the student already understands advanced concepts.
+8. Encourage students to solve problems independently.
+9. Be supportive, clear and educational.
+"""
 
 
 def ask_ai(question):
 
     conversation_history.append({"role": "user", "parts": [{"text": question}]})
+
     try:
+        config = types.GenerateContentConfig(system_instruction=system_instruction)
+
         response = client.models.generate_content(
-            model="gemini-3.5-flash-lite",
-            contents=conversation_history,
+            model="gemini-3.5-flash-lite", contents=conversation_history, config=config
         )
+
         answer = response.text
 
+        if not answer:
+            raise ValueError("Gemini returned an empty response.")
+
         conversation_history.append({"role": "model", "parts": [{"text": answer}]})
+
         return answer
 
-    except errors.ServerError as e:
-        conversation_history.pop()  # Remove the last user message if there's an error
-        return f"Gemini server error {e}"
     except errors.APIError as e:
-        conversation_history.pop()  # Remove the last user message if there's an error
-        return f"Gemini API error {e}"
+        conversation_history.pop()
+        return f"Gemini API error: {e}"
+
     except Exception as e:
-        conversation_history.pop()  # Remove the last user message if there's an error
-        return f"An unexpected error occurred: {e}"
+        conversation_history.pop()
+        return f"Unexpected error: {e}"
 
 
-print("AI Chatbot Started")
-print("conversation memory enabled")
+# Start chatbot
+print("AI Chatbot Started!")
+print("Conversation memory enabled.")
+print("Python and AI Engineering Tutor mode enabled.")
 print("Type 'exit' to stop.\n")
 
 while True:
@@ -50,6 +79,8 @@ while True:
     if question.lower().strip() == "exit":
         print("Chatbot stopped.")
         break
+
     answer = ask_ai(question)
-    print(f"AI: {answer}\n")
+
+    print("\nAI:", answer)
     print()
