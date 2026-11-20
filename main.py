@@ -1,4 +1,5 @@
 import os
+import sqlite3
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
@@ -13,9 +14,27 @@ if not api_key:
 
 # Connect to Gemini
 client = genai.Client(api_key=api_key)
+connection = sqlite3.connect("chat_history.db")
+
+connection.execute(
+    """
+    CREATE TABLE IF NOT EXISTS messages(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        role TEXT NOT NULL,
+        message TEXT NOT NULL)"""
+)
+connection.commit()
+
 
 # Conversation memory
 conversation_history = []
+saved_messages = connection.execute(
+    "SELECT role, message FROM messages ORDER BY id"
+).fetchall
+
+for role, message in saved_messages:
+    conversation_history.append({"role": role, "parts": [{"text": message}]})
+    print(f"Loaded {len(conversation_history)} previous messages.")
 
 # Chatbot personality
 system_instruction = """
@@ -56,6 +75,15 @@ def ask_ai(question):
 
         conversation_history.append({"role": "model", "parts": [{"text": answer}]})
 
+        connection.executemany(
+            "INSERT INTO messages (role, message) VALUES (?, ?)",
+            [
+                ("user", question),
+                ("model", answer),
+            ],
+        )
+        connection.commit()
+
         return answer
 
     except errors.APIError as e:
@@ -68,8 +96,9 @@ def ask_ai(question):
 
 
 # Start chatbot
-print("AI Chatbot Started!")
+print("\nAI Chatbot Started!")
 print("Conversation memory enabled.")
+print("Permanent SQLite memory enabled.")
 print("Python and AI Engineering Tutor mode enabled.")
 print("Type 'exit' to stop.\n")
 
@@ -84,3 +113,5 @@ while True:
 
     print("\nAI:", answer)
     print()
+
+    connection.close()
