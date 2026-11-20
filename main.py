@@ -35,7 +35,7 @@ print("Saved messages:", saved_messages)
 
 for role, message in saved_messages:
     conversation_history.append({"role": role, "parts": [{"text": message}]})
-    print(f"Loaded {len(conversation_history)} previous messages.")
+print(f"Loaded {len(conversation_history)} previous messages.")
 
 # Chatbot personality
 system_instruction = """
@@ -60,7 +60,9 @@ Follow these rules:
 
 def ask_ai(question):
 
-    conversation_history.append({"role": "user", "parts": [{"text": question}]})
+    user_message = {"role": "user", "parts": [{"text": question}]}
+
+    conversation_history.append(user_message)
 
     try:
         config = types.GenerateContentConfig(system_instruction=system_instruction)
@@ -74,25 +76,30 @@ def ask_ai(question):
         if not answer:
             raise ValueError("Gemini returned an empty response.")
 
-        conversation_history.append({"role": "model", "parts": [{"text": answer}]})
+        model_message = {"role": "model", "parts": [{"text": answer}]}
+
+        conversation_history.append(model_message)
 
         connection.executemany(
             "INSERT INTO messages (role, message) VALUES (?, ?)",
-            [
-                ("user", question),
-                ("model", answer),
-            ],
+            [("user", question), ("model", answer)],
         )
+
         connection.commit()
 
         return answer
 
     except errors.APIError as e:
-        conversation_history.pop()
+        conversation_history.remove(user_message)
         return f"Gemini API error: {e}"
 
     except Exception as e:
-        conversation_history.pop()
+        if conversation_history and conversation_history[-1]["role"] == "model":
+            conversation_history.pop()
+
+        if user_message in conversation_history:
+            conversation_history.remove(user_message)
+
         return f"Unexpected error: {e}"
 
 
@@ -115,4 +122,4 @@ while True:
     print("\nAI:", answer)
     print()
 
-    connection.close()
+connection.close()
