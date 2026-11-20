@@ -30,7 +30,8 @@ connection.commit()
 conversation_history = []
 saved_messages = connection.execute(
     "SELECT role, message FROM messages ORDER BY id"
-).fetchall
+).fetchall()
+print("Saved messages:", saved_messages)
 
 for role, message in saved_messages:
     conversation_history.append({"role": role, "parts": [{"text": message}]})
