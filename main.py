@@ -24,7 +24,43 @@ connection.execute(
         message TEXT NOT NULL)"""
 )
 connection.commit()
+connection.execute(
+    """
+      CREATE TABLE IF NOT EXISTS user_memory
+      (
+        memory_key TEXT PRIMARY KEY,
+        memory_value TEXT NOT NULL
+      )
+      """
+)
+connection.commit()
 
+
+def save_memory(key, value):
+    connection.execute(
+        """
+        INSERT INTO user_memory (memory_key, memory_value)
+        VALUES (?, ?)
+        ON CONFLICT (memory_key)
+        DO UPDATE SET memory_value = excluded.memory_value
+        """,
+        (key, value),
+    )
+
+
+def get_memories():
+    saved_memories = connection.execute(
+        "SELECT memory_key, memory_value From user_memory"
+    ).fetchall()
+    return saved_memories
+
+
+# Temporary memory test
+save_memory("name", "Ini")
+save_memory("learning_goal", "Python and AI Engineering")
+
+print("Saved user memories:")
+print(get_memories())
 
 # Conversation memory
 conversation_history = []
@@ -111,11 +147,14 @@ print("Python and AI Engineering Tutor mode enabled.")
 print("Type 'exit' to stop.\n")
 
 while True:
-    question = input("You: ")
+    question = input("You: ").strip()
 
-    if question.lower().strip() == "exit":
+    if question.lower() == "exit":
         print("Chatbot stopped.")
         break
+    if not question:
+        print("Please enter a message")
+        continue
 
     answer = ask_ai(question)
 
