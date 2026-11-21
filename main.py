@@ -4,6 +4,14 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
 
+ALLOWED_MEMORY_KEYS = {
+    "name",
+    "learning_goal",
+    "learning_style",
+    "occupation",
+    "interests",
+}
+
 # Load environment variables
 load_dotenv()
 
@@ -64,6 +72,82 @@ def get_memory_context():
     for key, value in memories:
         memory_context += f"-{key}: {value}\n"
     return memory_context
+
+
+import json
+
+
+def extract_memories(user_message):
+
+    extraction_prompt = f"""
+    Analyse the user's message and identify important,
+    explicit personal information worth remembering.
+
+    Only extract information the user has directly stated.
+
+    Focus on:
+    - name
+    - learning_goal
+    - learning_style
+    - occupation
+    - interests
+
+    Return a JSON object containing the information found.
+
+    If there is no useful information, return an empty JSON object.
+
+    Do not guess or invent information.
+
+    User message:
+    {user_message}
+    """
+
+    response = client.models.generate_content(
+        model="gemini-3.5-flash-lite",
+        contents=extraction_prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json", temperature=0
+        ),
+    )
+
+    if not response.text:
+        print("Gemini returned an empty response.")
+        return {}
+
+    try:
+        extracted_data = json.loads(response.text)
+
+    except json.JSONDecodeError:
+        print("Gemini returned invalid JSON:")
+        print(response.text)
+        return {}
+
+    if not isinstance(extracted_data, dict):
+        print("Unexpected response format.")
+        return {}
+
+    return extracted_data
+
+
+def validate_memories(extracted_data):
+
+    validated_memories = {}
+
+    for key, value in extracted_data.items():
+        if key not in ALLOWED_MEMORY_KEYS:
+            continue
+
+        if not isinstance(value, str):
+            continue
+
+        value = value.strip()
+
+        if not value:
+            continue
+
+        validated_memories[key] = value
+
+    return validated_memories
 
 
 # Temporary memory test
@@ -183,5 +267,6 @@ while True:
 
     print("\nAI:", answer)
     print()
+
 
 connection.close()
