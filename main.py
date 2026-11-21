@@ -55,6 +55,17 @@ def get_memories():
     return saved_memories
 
 
+def get_memory_context():
+    memories = get_memories()
+
+    if not memories:
+        return "No saved information yet"
+    memory_context = "Here is what you know about the user:\n"
+    for key, value in memories:
+        memory_context += f"-{key}: {value}\n"
+    return memory_context
+
+
 # Temporary memory test
 save_memory("name", "Ini")
 save_memory("learning_goal", "Python and AI Engineering")
@@ -101,7 +112,19 @@ def ask_ai(question):
     conversation_history.append(user_message)
 
     try:
-        config = types.GenerateContentConfig(system_instruction=system_instruction)
+        memory_context = get_memory_context()
+        config = types.GenerateContentConfig(
+            system_instruction=f"""
+                {system_instruction}
+
+                IMPORTANT USER INFORMATION:
+                {memory_context}
+
+                Use this information to personalise your responses.
+                Treat these saved memories as information provided by the user.
+                Do not invent personal information that is not stored.
+                """
+        )
 
         response = client.models.generate_content(
             model="gemini-3.5-flash-lite", contents=conversation_history, config=config
