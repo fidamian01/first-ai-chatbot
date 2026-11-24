@@ -56,6 +56,18 @@ def save_memory(key, value):
     )
 
 
+def delete_memory(key):
+    connection.execute(
+        """
+        DELETE FROM user_memory   
+        WHERE memory_key = ?
+        
+        """,
+        (key,),
+    )
+    connection.commit()
+
+
 def get_memories():
     saved_memories = connection.execute(
         "SELECT memory_key, memory_value From user_memory"
@@ -80,58 +92,96 @@ import json
 def extract_memories(user_message):
 
     extraction_prompt = f"""
-    Analyse the user's message and identify important,
-    explicit personal information worth remembering.
+    You are a personal memory extraction system.
 
-    Only extract information the user has directly stated.
+    Analyse the user's message and identify explicit,
+    useful personal information that is likely to remain
+    relevant in future conversations.
 
-    Focus on:
+    Only extract facts the user clearly states about themselves.
+
+    Allowed memory categories:
     - name
     - learning_goal
     - learning_style
     - occupation
     - interests
 
-    Return a JSON object containing the information found.
+    IMPORTANT RULES:
 
-    If there is no useful information, return an empty JSON object.
+    1. Do not extract information from questions.
+    2. Do not extract hypothetical statements.
+    3. Do not extract guesses or assumptions.
+    4. Do not extract temporary activities or short-term plans.
+    5. Do not treat examples as personal information.
+    6. Do not change the meaning of the user's statements.
+    7. Only extract information that belongs to the user.
+    8. If the user corrects previously stated information,
+       extract the corrected information.
 
-    Do not guess or invent information.
+    Return only a valid JSON object.
+
+    Example 1:
+    User: My name is Ini.
+    Output: {{"name": "Ini"}}
+
+    Example 2:
+    User: I prefer learning through practical exercises.
+    Output: {{"learning_style": "practical coding exercises"}}
+
+    Example 3:
+    User: What if I wanted to become a data scientist?
+    Output: {{}}
+
+    Example 4:
+    User: I might start learning Java next year.
+    Output: {{}}
+
+    Example 5:
+    User: I am interested in machine learning.
+    Output: {{"interests": "machine learning"}}
+
+    If no useful information is found, return {{}}.
 
     User message:
     {user_message}
     """
 
-    response = client.models.generate_content(
-        model="gemini-3.5-flash-lite",
-        contents=extraction_prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json", temperature=0
-        ),
-    )
-
-    if not response.text:
-        print("Gemini returned an empty response.")
-        return {}
-
     try:
+        response = client.models.generate_content(
+            model="gemini-3.5-flash-lite",
+            contents=extraction_prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json", temperature=0
+            ),
+        )
+
+        if not response.text:
+            print("Gemini returned an empty response.")
+            return {}
+
         extracted_data = json.loads(response.text)
 
+        if not isinstance(extracted_data, dict):
+            print("Unexpected response format.")
+            return {}
+
+        return extracted_data
+
     except json.JSONDecodeError:
-        print("Gemini returned invalid JSON:")
-        print(response.text)
+        print("Gemini returned invalid JSON.")
         return {}
 
-    if not isinstance(extracted_data, dict):
-        print("Unexpected response format.")
+    except Exception as e:
+        print("Memory extraction error:", e)
         return {}
-
-    return extracted_data
 
 
 def validate_memories(extracted_data):
 
     validated_memories = {}
+
+    invalid_values = {"unknown", "none", "not specified", "not sure", "i don't know"}
 
     for key, value in extracted_data.items():
         if key not in ALLOWED_MEMORY_KEYS:
@@ -142,12 +192,27 @@ def validate_memories(extracted_data):
 
         value = value.strip()
 
-        if not value:
+        if not value or len(value) > 200:
+            continue
+
+        if value.casefold() in invalid_values:
             continue
 
         validated_memories[key] = value
 
     return validated_memories
+
+
+def update_user_memories(user_message):
+
+    extracted_data = extract_memories(user_message)
+
+    validated_data = validate_memories(extracted_data)
+
+    for key, value in validated_data.items():
+        save_memory(key, value)
+
+    return validated_data
 
 
 # Temporary memory test
@@ -162,7 +227,7 @@ conversation_history = []
 saved_messages = connection.execute(
     "SELECT role, message FROM messages ORDER BY id"
 ).fetchall()
-print("Saved messages:", saved_messages)
+
 
 for role, message in saved_messages:
     conversation_history.append({"role": role, "parts": [{"text": message}]})
@@ -267,6 +332,57 @@ while True:
 
     print("\nAI:", answer)
     print()
+    try:
+        saved_memories = update_user_memories(question)
 
+        if saved_memories:
+            print("Memory updated successfully.")
+    except Exception as e:
+        print("Memory update error", e)
 
 connection.close()
+
+
+# Test memory extraction
+
+test_messages = [
+    "My name is Ini",
+    "I prefer learning through practical coding exercises",
+    "What if I wanted to become a data scientist?",
+    "I might start learning Java next year",
+    "I am interested in machine learning",
+]
+
+for message in test_messages:
+    print("\nUser message:", message)
+
+    result = extract_memories(message)
+
+    print("Extracted memory:", result)
+
+
+# Test memory validation
+
+print("\nTesting memory validation...")
+
+test_data = {
+    "name": "Ini",
+    "learning_goal": "Python and AI Engineering",
+    "learning_style": "   practical coding exercises   ",
+    "occupation": "",
+    "interests": "unknown",
+    "password": "123456",
+    "extra_information": "some random information",
+}
+
+result = validate_memories(test_data)
+
+print("Validated memories:", result)
+
+print("\nMemories before deletion:")
+print(get_memories())
+
+delete_memory("interests")
+
+print("\nMemories after deletion:")
+print(get_memories())
