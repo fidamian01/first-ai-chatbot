@@ -68,11 +68,36 @@ def delete_memory(key):
     connection.commit()
 
 
+def update_memory(key, value):
+    connection.execute(
+        """
+        UPDATE user_memory      
+        SET memory_value = ?
+        WHERE memory_key = ?
+        
+        """,
+        (value, key),
+    )
+    connection.commit()
+
+
 def get_memories():
     saved_memories = connection.execute(
         "SELECT memory_key, memory_value From user_memory"
     ).fetchall()
     return saved_memories
+
+
+def display_memories():
+    memories = get_memories()
+
+    if not memories:
+        print("No saved memories found.")
+        return
+
+    print("\n Here is what i remember about you:\n")
+    for key, value in memories:
+        print(f"-{key.replace('_', ' ').title()}: {value}")
 
 
 def get_memory_context():
@@ -340,8 +365,6 @@ while True:
     except Exception as e:
         print("Memory update error", e)
 
-connection.close()
-
 
 # Test memory extraction
 
@@ -382,7 +405,21 @@ print("Validated memories:", result)
 print("\nMemories before deletion:")
 print(get_memories())
 
-delete_memory("interests")
+delete_memory("learning_style")
 
 print("\nMemories after deletion:")
 print(get_memories())
+
+
+print("\nTesting memory update...")
+
+update_memory("learning_goal", "AI Engineering and Machine Learning")
+
+print("\nMemories after update:")
+print(get_memories())
+
+print("\nTesting memory display...")
+
+display_memories()
+
+connection.close()
